@@ -21,7 +21,7 @@ def run():
                 sys.exit()
 
         renderer.update()
-        video_out.export_frame(renderer.displaysurface)
+        video_out.export_frame(renderer.display_surface)
         pygame.display.update()
         clock.tick(FPS)
         if not game_state.next_frame():
