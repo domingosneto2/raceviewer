@@ -1,10 +1,10 @@
 import pygame.locals
 import text
 
-WINDOW_HEIGHT = 1080
-WINDOW_WIDTH = 1940
-# WINDOW_HEIGHT=480
-# WINDOW_WIDTH=720
+# WINDOW_HEIGHT = 1080
+# WINDOW_WIDTH = 1940
+WINDOW_HEIGHT=480
+WINDOW_WIDTH=720
 FPS = 60
 
 SCALE_FACTOR= WINDOW_HEIGHT / 1080
@@ -57,17 +57,22 @@ FL_PURPLE=(202, 155, 247)
 class Car:
     def __init__(self, car_index, renderer):
         self.car_index = car_index
+        self.renderer = renderer
+
         self.surf = pygame.Surface((CAR_LENGTH, CAR_WIDTH))
-        self.color = self.get_color(renderer.state.extra_info[car_index].team_id)
+        self.color = self.get_color(self.car_state().team_id())
         self.surf.fill(self.color)
         self.rect = self.surf.get_rect()
-        self.renderer = renderer
+
         self.name = renderer.state.cars[car_index].driver_name
         self.position_queue = [0]
         self.penalties_img = None
         self.penalties = 0
         self.last_position_change = 0
         self.renderer = renderer
+
+    def car_state(self):
+        return self.renderer.state.car_state(self.car_index)
 
     def get_base_name_width(self):
         return text.prepare_text(self.name, self.renderer.driver_font, BLACK).get_rect().width
@@ -77,7 +82,7 @@ class Car:
         self.fl_name_surface = text.prepare_text(self.name, self.renderer.driver_font, WHITE, FL_PURPLE, width, CAR_WIDTH, TEXT_BOX_BORDER)
 
     def is_active(self):
-        return self.renderer.state.extra_info[self.car_index].is_active
+        return self.car_state().is_active()
 
     def get_color(self, team_id):
         if team_id == 0:
@@ -102,7 +107,7 @@ class Car:
             return 150,0,0
 
     def process_position_change(self, player_timestamp):
-        position = self.renderer.state.cars[self.car_index].position
+        position = self.car_state().position()
         if len(self.position_queue) == 1 and self.position_queue[0] == 0:
             self.position_queue[0] = position
             self.last_position_change = 0
@@ -152,14 +157,13 @@ class Car:
         return result
 
     def draw(self, surface, viewport_position, player_timestamp):
-        car_info = self.renderer.state.extra_info[self.car_index]
-        car = self.renderer.state.cars[self.car_index]
-        progress = car_info.progress / self.renderer.state.num_laps
+        car_state = self.car_state()
+        progress = car_state.progress / self.renderer.state.num_laps
         position = self.get_position_for_rendering(player_timestamp)
         self.rect.top = TOP_BORDER + (position - 1) * CAR_WIDTH * (1 + CAR_SPACING)
         self.rect.right = progress * LAP_WIDTH * self.renderer.state.num_laps - viewport_position
         surface.blit(self.surf, self.rect)
-        fl = self.renderer.state.fastest_lap
+        fl = self.renderer.state.fastest_lap()
         if fl is not None and fl.driver_idx == self.car_index:
             img_to_render = self.fl_name_surface
         else:
@@ -170,7 +174,7 @@ class Car:
         name_rect.left = self.rect.right + 5
         surface.blit(img_to_render, name_rect)
 
-        if car.pit_status != 0:
+        if car_state.pit_status() != 0:
             pit_img_rect = self.renderer.pit_img.get_rect()
             pit_img_rect.centery = self.rect.centery
             pit_img_rect.left = name_rect.right + 5
@@ -210,8 +214,8 @@ class Renderer:
         self.lap_font = pygame.font.Font("font-bold.ttf", TRACK_FONT_SIZE)
 
     def initialize_cars(self):
-        for i in range(len(self.state.cars)):
-            self.cars.append( Car(i, self))
+        for i in range(len(self.state.car_states)):
+            self.cars.append(Car(i, self))
 
     def prepare_driver_names(self):
         max_base_name_width = max([car.get_base_name_width() for car in self.cars])
@@ -247,7 +251,7 @@ class Renderer:
             if car.is_active():
                 car.draw(self.display_surface, self.viewport_position, self.state.player_timestamp)
 
-        if self.state.safety_car:
+        if self.state.is_safety_car():
             info_text = f"[SC]"
             img = self.info_font.render(info_text, True, (255, 255, 0))
             self.display_surface.blit(img, (5, 5))
