@@ -1,17 +1,14 @@
 import pygame.locals
 import text
+import math
 
-# WINDOW_HEIGHT = 1080
-# WINDOW_WIDTH = 1940
-WINDOW_HEIGHT=480
-WINDOW_WIDTH=720
+WINDOW_HEIGHT = 1080
+WINDOW_WIDTH = 1940
+# WINDOW_HEIGHT=480
+# WINDOW_WIDTH=720
 FPS = 60
 
 SCALE_FACTOR= WINDOW_HEIGHT / 1080
-
-# CAR_FONT_SIZE=18
-# INFO_FONT_SIZE=50
-# TRACK_FONT_SIZE=30
 
 CAR_FONT_SIZE_BASE=26
 INFO_FONT_SIZE_BASE=100
@@ -53,16 +50,15 @@ BLACK=(0, 0, 0)
 YELLOW=(255, 255, 0)
 FL_PURPLE=(202, 155, 247)
 
+SPIN_ANIMATION_DURATION = 0.5
 
 class Car:
     def __init__(self, car_index, renderer):
         self.car_index = car_index
         self.renderer = renderer
 
-        self.surf = pygame.Surface((CAR_LENGTH, CAR_WIDTH))
         self.color = self.get_color(self.car_state().team_id())
-        self.surf.fill(self.color)
-        self.rect = self.surf.get_rect()
+        self.rect = pygame.Rect(0, 0, CAR_LENGTH, CAR_WIDTH)
 
         self.name = renderer.state.cars[car_index].driver_name
         self.position_queue = [0]
@@ -70,6 +66,12 @@ class Car:
         self.penalties = 0
         self.last_position_change = 0
         self.renderer = renderer
+
+        self.spin_start_timestamp = 0
+        self.spin_end_timestamp = 0
+        # Rotation is such that 0 means no rotation, 0.5 means 180 degrees or
+        # PI rads, and 1 means 360 degrees or 2xPI rads
+        self.rotation = 0
 
     def car_state(self):
         return self.renderer.state.car_state(self.car_index)
@@ -129,6 +131,9 @@ class Car:
 
     def update(self, player_timestamp):
         self.process_position_change(player_timestamp)
+
+        self.update_rotation_angle(player_timestamp)
+
         car = self.renderer.state.cars[self.car_index]
 
         if self.penalties != car.penalties:
@@ -138,6 +143,26 @@ class Car:
                 self.penalties_img = self.renderer.driver_font.render(penalties_msg, True, (255, 255, 255))
             else:
                 self.penalties_img = None
+
+    def update_rotation_angle(self, player_timestamp):
+        car_state = self.car_state()
+        if car_state.is_spinning and self.spin_start_timestamp == 0:
+            self.spin_start_timestamp = player_timestamp
+            self.spin_end_timestamp = 0
+        if car_state.is_spinning and self.spin_end_timestamp != 0:
+            self.spin_end_timestamp = 0
+        if not car_state.is_spinning and self.spin_start_timestamp != 0 and self.spin_end_timestamp == 0:
+            self.spin_end_timestamp = player_timestamp
+
+        if self.spin_end_timestamp != 0:
+            spin_elapsed = self.spin_end_timestamp - self.spin_start_timestamp
+            target_rotation_end = math.ceil(spin_elapsed / SPIN_ANIMATION_DURATION) * SPIN_ANIMATION_DURATION
+            if player_timestamp >= self.spin_start_timestamp + target_rotation_end:
+                self.rotation = 0
+                self.spin_start_timestamp = 0
+                self.spin_end_timestamp = 0
+
+        self.rotation = (player_timestamp - self.spin_start_timestamp) / SPIN_ANIMATION_DURATION
 
     def get_position_change_progress(self, player_timestamp):
         position_change_speed = POSITION_CHANGE_DURATION
@@ -156,13 +181,44 @@ class Car:
         result = float(self.position_queue[1]) - float((self.position_queue[1] - self.position_queue[0])) * (1.0 - position_change_progress)
         return result
 
+    def get_polygon(self, player_timestamp):
+        points = (self.rect.topleft, self.rect.topright, self.rect.bottomright, self.rect.bottomleft)
+        if self.spin_start_timestamp:
+            points = self.rotate_around_center(points, self.rotation, self.rect)
+        return points
+
+    def rotate_around_center(self, points, rotation_amount, rect):
+        translation = (-rect.centerx, -rect.centery)
+        points = self.translate(points, translation)
+
+        points = self.rotate(points, rotation_amount)
+
+        translation = (rect.centerx, rect.centery)
+        return self.translate(points, translation)
+
+    def translate(self, points, translation):
+        result = []
+        for point in points:
+            result.append((point[0] + translation[0], point[1] + translation[1]))
+        return result
+
+    def rotate(self, points, rotation_amount):
+        result = []
+        angle = rotation_amount * 2 * math.pi
+        for point in points:
+            x = math.cos(angle) * point[0] - math.sin(angle) * point[1]
+            y = math.sin(angle) * point[0] + math.cos(angle) * point[1]
+            result.append((x, y))
+        return result
+
     def draw(self, surface, viewport_position, player_timestamp):
         car_state = self.car_state()
         progress = car_state.progress / self.renderer.state.num_laps
         position = self.get_position_for_rendering(player_timestamp)
         self.rect.top = TOP_BORDER + (position - 1) * CAR_WIDTH * (1 + CAR_SPACING)
         self.rect.right = progress * LAP_WIDTH * self.renderer.state.num_laps - viewport_position
-        surface.blit(self.surf, self.rect)
+        polygon = self.get_polygon(player_timestamp)
+        pygame.draw.polygon(surface, self.color, polygon, 0)
         fl = self.renderer.state.fastest_lap()
         if fl is not None and fl.driver_idx == self.car_index:
             img_to_render = self.fl_name_surface

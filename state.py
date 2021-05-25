@@ -1,4 +1,5 @@
 import session
+import track_speed
 
 
 class CarState:
@@ -8,6 +9,7 @@ class CarState:
         self.car_idx = car_idx
         self.finished = False
         self.state = state
+        self.is_spinning = False
 
     def participant_info(self):
         return self.state.participants[self.car_idx]
@@ -27,9 +29,12 @@ class CarState:
     def pit_status(self):
         return self.car_info().pit_status
 
-    def update(self, leader_progress, lap_info, num_laps):
+    def update(self, leader_progress, lap_info, num_laps, session_lap):
         car_info = self.state.cars[self.car_idx]
         current_lap = car_info.lap_number
+
+        self.is_spinning = self.state.speed_info.is_spinning(self.car_idx, car_info.timestamp)
+        self.is_spinning = self.is_spinning and not self.state.is_safety_car()
 
         while leader_progress[self.delta_ticks][0] < car_info.total_distance \
                 and self.delta_ticks < len(leader_progress) - 1:
@@ -39,7 +44,7 @@ class CarState:
         curr_lap_info = lap_info[current_lap - 1]
 
         # If I'm in the same lap as the leader
-        if car_info.lap_number == curr_lap_info.lap_number:
+        if current_lap == session_lap:
             leader_lap_time = leader_timestamp - curr_lap_info.start_timestamp
             leader_lap_pct = leader_lap_time / curr_lap_info.lap_duration
             t = self.interpolate(leader_progress, self.delta_ticks, car_info.total_distance)
@@ -80,6 +85,9 @@ class GameState:
         self.session = session.Session("/Users/dneto/dev/raceviewer/F1_2019_e9444ba7f05db735.sqlite3", "/Users/dneto/dev/raceviewer/driver_names.txt")
         self.num_laps = self.session.get_number_of_laps()
         self.track_length = self.session.get_track_length()
+
+        self.speed_info = track_speed.TrackSpeed(self.session)
+
         self.session.start_race_replay(skip_formation_lap=True)
         self.session.skip_to_first_race_position()
         self.cars = self.session.get_current_race_position()
@@ -157,7 +165,7 @@ class GameState:
         self.update_leader_progress()
 
         for i in range(len(self.car_states)):
-            self.car_states[i].update(self.leader_progress, self.lap_info, self.num_laps)
+            self.car_states[i].update(self.leader_progress, self.lap_info, self.num_laps, self.current_lap)
 
         return True
 

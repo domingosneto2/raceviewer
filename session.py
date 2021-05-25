@@ -83,6 +83,7 @@ class Session:
         self.fastest_lap_info = None
         self.race_position = None
         self.chequered_flag = None
+        self.active_participants = [p for p in self.get_participants_info() if p.is_active]
 
         self.next_timestamp = None
         self.next_packet = None
@@ -183,7 +184,7 @@ class Session:
     def get_current_race_position(self):
         return self.race_position
 
-    def get_race_position(self, packet, timestamp):
+    def get_race_position(self, packet):
         result = []
         for i in range(len(packet.lapData)):
             lap_data = packet.lapData[i]
@@ -192,7 +193,7 @@ class Session:
                 driver_name = ""
             else:
                 driver_name = self.driver_names[position - 1]
-            result.append(CarInfo(timestamp, lap_data.carPosition, lap_data.currentLapNum, lap_data.lapDistance,
+            result.append(CarInfo(packet.header.sessionTime, lap_data.carPosition, lap_data.currentLapNum, lap_data.lapDistance,
                                   lap_data.totalDistance, driver_name, lap_data.pitStatus, lap_data.resultStatus,
                                   lap_data.penalties))
         return result
@@ -216,11 +217,13 @@ class Session:
                 self.chequered_flag = True
 
         if packet_id == 2:
-            self.race_position = self.get_race_position(packet, packet_timestamp)
+            self.race_position = self.get_race_position(packet)
 
         self.next_packet = self.cursor.fetchone()
         if self.next_packet is not None:
             self.next_timestamp = self.next_packet[0]
+        else:
+            self.cursor.close()
 
         return True
 
