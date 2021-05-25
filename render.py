@@ -1,12 +1,16 @@
 import pygame.locals
 import text
 import math
+import datetime
 
 WINDOW_HEIGHT = 1080
 WINDOW_WIDTH = 1940
 # WINDOW_HEIGHT=480
 # WINDOW_WIDTH=720
 FPS = 60
+SECONDS_PER_LAP = 2
+# START_FRAME = 24 * FPS * SECONDS_PER_LAP
+START_FRAME = 0
 
 SCALE_FACTOR= WINDOW_HEIGHT / 1080
 
@@ -40,8 +44,6 @@ VIEWPORT_INITIAL_X = -LEFT_BORDER - CAR_LENGTH
 
 LAPS_PER_SCREEN = 3
 LAP_WIDTH = VISIBLE_TRACK_WIDTH / LAPS_PER_SCREEN
-
-SECONDS_PER_LAP = 2
 
 POSITION_CHANGE_DURATION = 0.5
 
@@ -82,6 +84,13 @@ class Car:
     def prepare_name_surfaces(self, width):
         self.name_surface = text.prepare_text(self.name, self.renderer.driver_font, WHITE, BLACK, width, CAR_WIDTH, TEXT_BOX_BORDER)
         self.fl_name_surface = text.prepare_text(self.name, self.renderer.driver_font, WHITE, FL_PURPLE, width, CAR_WIDTH, TEXT_BOX_BORDER)
+
+    def prepare_final_time_surface(self):
+        final_time_string = self.get_final_time_string()
+        self.classification_surface = \
+            text.prepare_text(final_time_string,
+                              self.renderer.driver_font,
+                              WHITE, None, None, CAR_WIDTH, TEXT_BOX_BORDER)
 
     def is_active(self):
         return self.car_state().is_active()
@@ -242,6 +251,36 @@ class Car:
             penalties_img_rect.right = self.rect.left - 5
             surface.blit(self.penalties_img, penalties_img_rect)
 
+        if car_state.finished:
+            classification_img_rect = self.classification_surface.get_rect()
+            classification_img_rect.centery = self.rect.centery
+            classification_img_rect.left = name_rect.right + 5
+            surface.blit(self.classification_surface, classification_img_rect)
+
+    def get_final_time_string(self):
+        final_classification = self.car_state().final_classification()
+        leader_classification = self.car_state().leader_final_classification()
+        if final_classification.position == 1:
+            timestamp = self.car_state().final_time_with_penalties()
+        else:
+            timestamp = final_classification.final_time_with_penalties() - leader_classification.final_time_with_penalties()
+
+        dt = datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=timestamp * 1000)
+        if dt.hour > 0:
+            format = "%H:%M:%S.%f"
+        else:
+            format = "%M:%S.%f"
+        if final_classification.num_laps == leader_classification.num_laps:
+            timestamp_str = dt.strftime(format)[:-3]
+        elif final_classification.num_laps == leader_classification.num_laps - 1:
+            timestamp_str = "1 LAP"
+        else:
+            num_laps = leader_classification.num_laps - final_classification.num_laps
+            timestamp_str = f"{num_laps} LAPS"
+        # if final_classification.penalties_time > 0:
+        #     timestamp_str = timestamp_str + f" [+{int(final_classification.penalties_time)}]"
+        return timestamp_str
+
 
 class Renderer:
     def __init__(self, caption, state):
@@ -259,6 +298,8 @@ class Renderer:
         self.initialize_cars()
 
         self.prepare_driver_names()
+
+        self.prepare_classification_surfaces()
 
         self.prepare_pit_img()
 
@@ -278,14 +319,21 @@ class Renderer:
         for car in self.cars:
             car.prepare_name_surfaces(max_base_name_width)
 
+    def prepare_classification_surfaces(self):
+        for car in self.cars:
+            car.prepare_final_time_surface()
+
     def prepare_pit_img(self):
         self.pit_img = text.prepare_text("PIT", self.driver_font, (0, 0, 0), (255, 255, 0), height=CAR_WIDTH, border=TEXT_BOX_BORDER)
 
     def max_name_width(self):
         return max([car.name_surface.get_rect().width for car in self.cars])
 
+    def max_classification_width(self):
+        return max([car.classification_surface.get_rect().width for car in self.cars])
+
     def extra_right_space(self):
-        return self.max_name_width() + 20
+        return self.max_name_width() + self.max_classification_width() + 20
 
     def update_viewport(self, session_progress):
         initial_viewport_position = VIEWPORT_INITIAL_X
@@ -317,7 +365,7 @@ class Renderer:
             lap_x = i * LAP_WIDTH - self.viewport_position
             if -LAP_WIDTH < lap_x < WINDOW_WIDTH + LAP_WIDTH:
                 pygame.draw.line(surface, (255, 255, 255), (lap_x, 0), (lap_x, WINDOW_HEIGHT), 4)
-                if i < self.state.num_laps + 1:
+                if i < self.state.num_laps:
                     lap_text = f"Lap {i+1}"
                     lap_text_img = self.lap_font.render(lap_text, True, (255, 255, 255))
                     self.display_surface.blit(lap_text_img, (lap_x + 10, 5))

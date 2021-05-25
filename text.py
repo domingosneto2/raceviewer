@@ -11,7 +11,7 @@ def prepare_text(text, font, fg_color, bg_color=None, width=None, height=None, b
     if height is None:
         height = text_img.get_rect().height
 
-    text_surf = pygame.Surface((width + 2 * border, height))
+    text_surf = pygame.Surface((width + 2 * border, height), pygame.SRCALPHA)
 
     if bg_color is not None:
         text_surf.fill(bg_color)

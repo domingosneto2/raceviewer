@@ -1,6 +1,22 @@
 import sqlite3
 import f1_2020_telemetry.packets as packets
 
+
+class FinalClassification:
+    def __init__(self, position, num_laps, total_race_time, penalties_time):
+        self.position = position
+        self.num_laps = num_laps
+        self.total_race_time = total_race_time
+        self.penalties_time = penalties_time
+
+    def final_time_with_penalties(self):
+        return self.total_race_time + self.penalties_time
+
+    @staticmethod
+    def from_packet(packet):
+        return FinalClassification(packet.position, packet.numLaps, packet.totalRaceTime, packet.penaltiesTime)
+
+
 class ParticipantInfo:
     def __init__(self, driver_id, team_id, race_number):
         self.driver_id = driver_id
@@ -112,6 +128,12 @@ class Session:
         for i in range(len(participants)):
             participants[i].is_active = i < packet.numActiveCars
         return participants
+
+    def get_final_classification(self):
+        query = "SELECT packet FROM packets WHERE packetId = 8 ORDER BY pkt_id;"
+        packet_bytes, = self.get_record(query)
+        packet = packets.unpack_udp_packet(packet_bytes)
+        return [FinalClassification.from_packet(p) for p in packet.classificationData]
 
     def get_number_of_laps(self):
         query = "SELECT packet FROM packets WHERE packetId = 1 ORDER BY pkt_id;"

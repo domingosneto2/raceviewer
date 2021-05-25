@@ -29,6 +29,15 @@ class CarState:
     def pit_status(self):
         return self.car_info().pit_status
 
+    def final_classification(self):
+        return self.state.final_classification[self.car_idx]
+
+    def leader_final_classification(self):
+        return [c for c in self.state.final_classification if c.position == 1][0]
+
+    def final_time_with_penalties(self):
+        return self.final_classification().final_time_with_penalties()
+
     def update(self, leader_progress, lap_info, num_laps, session_lap):
         car_info = self.state.cars[self.car_idx]
         current_lap = car_info.lap_number
@@ -80,11 +89,12 @@ class CarState:
 
 
 class GameState:
-    def __init__(self, fps, lap_duration):
+    def __init__(self, fps, lap_duration, start_frame=0):
         self.cars = []
         self.session = session.Session("/Users/dneto/dev/raceviewer/F1_2019_e9444ba7f05db735.sqlite3", "/Users/dneto/dev/raceviewer/driver_names.txt")
         self.num_laps = self.session.get_number_of_laps()
         self.track_length = self.session.get_track_length()
+        self.final_classification = self.session.get_final_classification()
 
         self.speed_info = track_speed.TrackSpeed(self.session)
 
@@ -97,7 +107,7 @@ class GameState:
         if self.lap_info[0].is_formation_lap():
             self.formation_lap = self.lap_info[0]
             del self.lap_info[0]
-        self.current_frame = 0
+        self.current_frame = start_frame
         self.current_lap = 0
         self.fps = fps
         self.frames_per_lap = fps * lap_duration
@@ -152,11 +162,11 @@ class GameState:
         for i in range(len(self.cars)):
             car = self.cars[i]
             next_car = next_frame_cars[i]
-            extra_info = self.car_states[i]
+            car_state = self.car_states[i]
 
-            if not extra_info.finished:
+            if not car_state.finished:
                 if next_car.lap_number > car.lap_number and self.chequered_flag() or next_car.lap_number > self.num_laps:
-                    extra_info.finished = True
+                    car_state.finished = True
                 else:
                      self.cars[i] = next_car
             else:

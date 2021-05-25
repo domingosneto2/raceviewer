@@ -3,11 +3,11 @@ import sys
 import state
 import render
 import video
-from render import WINDOW_HEIGHT, WINDOW_WIDTH, FPS, SECONDS_PER_LAP
+from render import WINDOW_HEIGHT, WINDOW_WIDTH, FPS, SECONDS_PER_LAP, START_FRAME
 
 
 def run():
-    game_state = state.GameState(FPS, SECONDS_PER_LAP)
+    game_state = state.GameState(FPS, SECONDS_PER_LAP, START_FRAME)
     renderer = render.Renderer("Race Viewer", game_state)
     video_out = video.VideoWriter("/Users/dneto/dev/raceviewer/video.avi", WINDOW_WIDTH, WINDOW_HEIGHT, FPS)
 
