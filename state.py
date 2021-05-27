@@ -4,12 +4,15 @@ import track_speed
 
 class CarState:
     def __init__(self, car_idx, state):
-        self.delta_ticks = 0
+        self.delta_index = 0
         self.progress = 0
         self.car_idx = car_idx
         self.finished = False
         self.state = state
         self.is_spinning = False
+
+    def driver_name(self):
+        return self.participant_info().driver_name
 
     def participant_info(self):
         return self.state.participants[self.car_idx]
@@ -45,9 +48,9 @@ class CarState:
         self.is_spinning = self.state.speed_info.is_spinning(self.car_idx, car_info.timestamp)
         self.is_spinning = self.is_spinning and not self.state.is_safety_car()
 
-        while leader_progress[self.delta_ticks][0] < car_info.total_distance \
-                and self.delta_ticks < len(leader_progress) - 1:
-            self.delta_ticks += 1
+        while leader_progress[self.delta_index][0] < car_info.total_distance \
+                and self.delta_index < len(leader_progress) - 1:
+            self.delta_index += 1
 
         leader_timestamp = leader_progress[-1][1]
         curr_lap_info = lap_info[current_lap - 1]
@@ -56,7 +59,7 @@ class CarState:
         if current_lap == session_lap:
             leader_lap_time = leader_timestamp - curr_lap_info.start_timestamp
             leader_lap_pct = leader_lap_time / curr_lap_info.lap_duration
-            t = self.interpolate(leader_progress, self.delta_ticks, car_info.total_distance)
+            t = self.interpolate(leader_progress, self.delta_index, car_info.total_distance)
             time_delta = leader_timestamp - t
             if leader_lap_time > 0:
                 my_lap_pct = leader_lap_pct * (leader_lap_time - time_delta) / leader_lap_time
@@ -66,7 +69,7 @@ class CarState:
         else:
             leader_lap_pct = 1
             leader_lap_time = lap_info[car_info.lap_number - 1].lap_duration
-            t = self.interpolate(leader_progress, self.delta_ticks, car_info.total_distance)
+            t = self.interpolate(leader_progress, self.delta_index, car_info.total_distance)
             time_delta = lap_info[car_info.lap_number - 1].end_timestamp - t
             my_lap_pct = leader_lap_pct * (leader_lap_time - time_delta) / leader_lap_time
             self.progress = car_info.lap_number - 1 + my_lap_pct
@@ -75,11 +78,11 @@ class CarState:
         if self.progress > num_laps:
             self.progress = num_laps
 
-    def interpolate(self, leader_progress, delta_ticks, total_distance):
-        s1 = leader_progress[delta_ticks][0]
-        s0 = leader_progress[delta_ticks - 1][0]
-        t1 = leader_progress[delta_ticks][1]
-        t0 = leader_progress[delta_ticks - 1][1]
+    def interpolate(self, leader_progress, delta_index, total_distance):
+        s1 = leader_progress[delta_index][0]
+        s0 = leader_progress[delta_index - 1][0]
+        t1 = leader_progress[delta_index][1]
+        t0 = leader_progress[delta_index - 1][1]
 
         if s1 == s0:
             t = t1
@@ -89,9 +92,9 @@ class CarState:
 
 
 class GameState:
-    def __init__(self, fps, lap_duration, start_frame=0):
+    def __init__(self, session, fps, lap_duration, start_frame=0):
         self.cars = []
-        self.session = session.Session("/Users/dneto/dev/raceviewer/F1_2019_e9444ba7f05db735.sqlite3", "/Users/dneto/dev/raceviewer/driver_names.txt")
+        self.session = session
         self.num_laps = self.session.get_number_of_laps()
         self.track_length = self.session.get_track_length()
         self.final_classification = self.session.get_final_classification()
@@ -115,10 +118,15 @@ class GameState:
         self.current_timestamp = 0
         self.session_progress = 0
         self.player_timestamp = 0
-        self.pre_frames = 0
+        if start_frame == 0:
+            self.pre_frames = 0
+        else:
+            # Don't wait if we're skipping frames
+            self.pre_frames = self.frames_per_lap
         self.post_frames = 0
         self.session_finished = False
         self.leader_progress = []
+        self.is_chequered_flag = False
 
     def car_state(self, index):
         return self.car_states[index]
@@ -130,8 +138,7 @@ class GameState:
         return self.session.fastest_lap_info
 
     def chequered_flag(self):
-        # return self.session.chequered_flag
-        return self.current_lap >= self.num_laps
+        return self.is_chequered_flag
 
     def next_frame(self):
         if self.pre_frames < self.frames_per_lap:
@@ -148,8 +155,9 @@ class GameState:
         self.current_frame += 1
 
         self.current_lap = int(self.current_frame / self.frames_per_lap)
-        if self.current_lap >= len(self.lap_info):
-            self.current_lap = len(self.lap_info) - 1
+        self.is_chequered_flag = self.current_lap >= self.num_laps
+        if self.current_lap >= self.num_laps:
+            self.current_lap = self.num_laps - 1
         current_lap_duration = self.lap_info[self.current_lap].lap_duration
         current_frame_in_lap = self.current_frame - self.frames_per_lap * self.current_lap
         progress_in_lap = float(current_frame_in_lap)/float(self.frames_per_lap)

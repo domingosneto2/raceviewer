@@ -5,12 +5,13 @@ import datetime
 
 WINDOW_HEIGHT = 1080
 WINDOW_WIDTH = 1940
-# WINDOW_HEIGHT=480
-# WINDOW_WIDTH=720
 FPS = 60
 SECONDS_PER_LAP = 2
-# START_FRAME = 24 * FPS * SECONDS_PER_LAP
 START_FRAME = 0
+
+# WINDOW_HEIGHT=480
+# WINDOW_WIDTH=720
+# START_FRAME = 24 * FPS * SECONDS_PER_LAP
 
 SCALE_FACTOR= WINDOW_HEIGHT / 1080
 
@@ -62,12 +63,12 @@ class Car:
         self.color = self.get_color(self.car_state().team_id())
         self.rect = pygame.Rect(0, 0, CAR_LENGTH, CAR_WIDTH)
 
-        self.name = renderer.state.cars[car_index].driver_name
+        self.name = self.car_state().driver_name()
         self.position_queue = [0]
         self.penalties_img = None
         self.penalties = 0
         self.last_position_change = 0
-        self.renderer = renderer
+
 
         self.spin_start_timestamp = 0
         self.spin_end_timestamp = 0
@@ -190,7 +191,7 @@ class Car:
         result = float(self.position_queue[1]) - float((self.position_queue[1] - self.position_queue[0])) * (1.0 - position_change_progress)
         return result
 
-    def get_polygon(self, player_timestamp):
+    def get_polygon(self):
         points = (self.rect.topleft, self.rect.topright, self.rect.bottomright, self.rect.bottomleft)
         if self.spin_start_timestamp:
             points = self.rotate_around_center(points, self.rotation, self.rect)
@@ -222,12 +223,16 @@ class Car:
 
     def draw(self, surface, viewport_position, player_timestamp):
         car_state = self.car_state()
-        progress = car_state.progress / self.renderer.state.num_laps
+        progress = car_state.progress
         position = self.get_position_for_rendering(player_timestamp)
+
+        # Draw the car
         self.rect.top = TOP_BORDER + (position - 1) * CAR_WIDTH * (1 + CAR_SPACING)
-        self.rect.right = progress * LAP_WIDTH * self.renderer.state.num_laps - viewport_position
-        polygon = self.get_polygon(player_timestamp)
+        self.rect.right = progress * LAP_WIDTH - viewport_position
+        polygon = self.get_polygon()
         pygame.draw.polygon(surface, self.color, polygon, 0)
+
+        # Draw the driver name
         fl = self.renderer.state.fastest_lap()
         if fl is not None and fl.driver_idx == self.car_index:
             img_to_render = self.fl_name_surface
@@ -239,18 +244,21 @@ class Car:
         name_rect.left = self.rect.right + 5
         surface.blit(img_to_render, name_rect)
 
+        # Draw the pit flag
         if car_state.pit_status() != 0:
             pit_img_rect = self.renderer.pit_img.get_rect()
             pit_img_rect.centery = self.rect.centery
             pit_img_rect.left = name_rect.right + 5
             surface.blit(self.renderer.pit_img, pit_img_rect)
 
+        # Draw the penalties amount
         if self.penalties_img is not None:
             penalties_img_rect  = self.penalties_img.get_rect()
             penalties_img_rect.centery = self.rect.centery
             penalties_img_rect.right = self.rect.left - 5
             surface.blit(self.penalties_img, penalties_img_rect)
 
+        # Draw the final race time
         if car_state.finished:
             classification_img_rect = self.classification_surface.get_rect()
             classification_img_rect.centery = self.rect.centery
